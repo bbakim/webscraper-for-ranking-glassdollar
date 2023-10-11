@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 import requests
-import csv
+import json
 import uvicorn
 
 app = FastAPI()
@@ -85,68 +85,66 @@ async def fetch_and_save_data():
     # Base URL is created because all detailed info of enterprises have this base URL
     base_referer_url = "https://ranking.glassdollar.com/corporates/"
 
-    # The gathered information will be stored in a CSV file
-    with open("corporate_data.csv", mode="w", newline="") as csv_file:
-        fieldnames = ["Corporate ID", "Name", "Description", "Logo URL", "HQ City", "HQ Country", "Website URL", "LinkedIn URL", "Twitter URL", "Startup Partners Count"]
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-        writer.writeheader()
+    # The gathered information will be stored in a list
+    corporate_data_list = []
 
-        # Each enterprise's URL has its unique ID. Each enterprise's info will be gathered with a for loop
-        for corporate_id in corporate_ids:
-            referer_url = base_referer_url + corporate_id
+    for corporate_id in corporate_ids:
+        referer_url = base_referer_url + corporate_id
 
-            # Request payload will be reformatted each time with enterprise's unique IDs
-            payload = {
-                "query": f"""
-                    {{
-                        corporate(id: "{corporate_id}") {{
-                            id
-                            name
-                            description
-                            logo_url
-                            hq_city
-                            hq_country
-                            website_url
-                            linkedin_url
-                            twitter_url
-                            startup_partners_count
+        # Request payload will be reformatted each time with enterprise's unique IDs
+        payload = {
+            "query": f"""
+                {{
+                    corporate(id: "{corporate_id}") {{
+                        id
+                        name
+                        description
+                        logo_url
+                        hq_city
+                        hq_country
+                        website_url
+                        linkedin_url
+                        twitter_url
+                        startup_partners_count
+                        startup_partners {{
+                            company_name
+                            logo_url: logo
+                            city
+                            website
+                            country
+                            theme_gd
                         }}
+                        startup_themes
                     }}
-                """
-            }
+                }}
+            """
+        }
 
-            try:
-                # Referer header for the current corporate ID is updated
-                headers["Referer"] = referer_url
-                response = requests.post(url, headers=headers, json=payload)
+        try:
+            # Referer header for the current corporate ID is updated
+            headers["Referer"] = referer_url
+            response = requests.post(url, headers=headers, json=payload)
 
-                if response.status_code == 200:
-                    response_data = response.json()
-                    corporate_data = response_data.get("data", {}).get("corporate", {})
+            if response.status_code == 200:
+                response_data = response.json()
+                corporate_data = response_data.get("data", {}).get("corporate", {})
+                
+                # Add the retrieved data to the list
+                corporate_data_list.append(corporate_data)
+                
+                # To inform the user that the enterprise data has been added
+                current_corporate_name = corporate_data.get("name", "")
+                print(f"{current_corporate_name} data has been retrieved.")
 
-                    # Added to CSV file
-                    writer.writerow({
-                        "Corporate ID": corporate_data.get("id", ""),
-                        "Name": corporate_data.get("name", ""),
-                        "Description": corporate_data.get("description", ""),
-                        "Logo URL": corporate_data.get("logo_url", ""),
-                        "HQ City": corporate_data.get("hq_city", ""),
-                        "HQ Country": corporate_data.get("hq_country", ""),
-                        "Website URL": corporate_data.get("website_url", ""),
-                        "LinkedIn URL": corporate_data.get("linkedin_url", ""),
-                        "Twitter URL": corporate_data.get("twitter_url", ""),
-                        "Startup Partners Count": corporate_data.get("startup_partners_count", ""),
-                    })
-                    # To inform the user that the enterprise is added to the CSV file
-                    current_corporate_name = corporate_data.get("name", "")
-                    print(current_corporate_name + " is saved to the CSV file.")
+            else:
+                print(f"Failed to retrieve data for corporate ID {corporate_id}!")
 
-                else:
-                    print(f"Failed to write CSV!")
+        except Exception as e:
+            print(f"An error occurred for corporate ID {corporate_id}: {e}")
 
-            except Exception as e:
-                print(f"An error occurred for corporate ID {corporate_id}: {e}")
-
+    # Save the list of corporate data to a JSON file
+    with open("corporate_data.json", "w") as json_file:
+        json.dump(corporate_data_list, json_file, indent=4)
 
 def run_fastapi_app():
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
@@ -154,6 +152,5 @@ def run_fastapi_app():
 
 if __name__ == "__main__":
     # URL that needed to proceed when the application starts
-    print("URL: http://localhost:8000/fetch-and-save-data")
+    print("URL: http://localhost:8000/docs")
     run_fastapi_app()
-
